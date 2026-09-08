@@ -11,13 +11,13 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemo
 from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from openai import OpenAI
+from aiohttp import web  # <--- НОВЫЙ ИМПОРТ для веб-сервера
 
 # Подгружаем секреты из файла .env
 load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 
-# Проверка, что токены загружены
 if not BOT_TOKEN or not DEEPSEEK_API_KEY:
     raise ValueError("BOT_TOKEN или DEEPSEEK_API_KEY не найдены в .env файле!")
 
@@ -30,7 +30,6 @@ scheduler = AsyncIOScheduler()
 # Подключаем DeepSeek
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-# Импортируем функции из database.py (мы создадим его позже)
 import database
 
 # --- FSM для регистрации ---
@@ -279,8 +278,25 @@ async def send_daily_tasks():
 
 scheduler.add_job(send_daily_tasks, "cron", hour=9, minute=0)
 
+# --- ВЕБ-СЕРВЕР ДЛЯ RENDER (чтобы порт был открыт) ---
+async def health_check(request):
+    return web.Response(text="OK")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv('PORT', 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port=port)
+    await site.start()
+    print(f"🌐 Веб-сервер запущен на порту {port}")
+
 # --- Запуск ---
 async def main():
+    # Запускаем веб-сервер в фоне (чтобы Render не убивал процесс)
+    asyncio.create_task(start_web_server())
+    
     scheduler.start()
     print("🤖 Бот Купидон запущен и ждёт команды...")
     await dp.start_polling(bot)
