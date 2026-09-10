@@ -92,10 +92,10 @@ def generate_task_from_ai(user_id, task_type="text"):
         return None
     name, partner, meeting_date, place, hobbies, movie, love_lang = user[1], user[2], user[3], user[4], user[5], user[6], user[7]
     
-    if task_type == "photo":
-        prompt = f"Придумай романтическое задание для пары. Они познакомились в {place}, любят {hobbies}, их любимый фильм {movie}, язык любви — {love_lang}. Попроси их найти старое совместное фото и отправить партнёру с тёплыми словами. Напиши только текст задания, 1-2 предложения."
+       if task_type == "photo":
+        prompt = f"Придумай романтическое задание для пары. Они познакомились в {place}, любят {hobbies}, их любимый фильм {movie}, язык любви — {love_lang}. Попроси их найти старое совместное фото и отправить партнёру с тёплыми словами. Напиши только текст задания, 1-2 предложения. Без markdown-разметки, только обычный текст и эмодзи."
     else:
-        prompt = f"Придумай простое, но очень тёплое и нешаблонное задание для пары. Они познакомились в {place}, обожают {hobbies}, их любимый фильм — {movie}. Задание на 5 минут. Упомяни их историю. Напиши только текст задания, начни с имени {name}."
+        prompt = f"Придумай простое, но очень тёплое и нешаблонное задание для пары. Они познакомились в {place}, обожают {hobbies}, их любимый фильм — {movie}. Задание на 5 минут. Упомяни их историю. Напиши только текст задания, начни с имени {name}. Без markdown-разметки, только обычный текст и эмодзи."
     
     response = client.chat.completions.create(
         model="deepseek-chat",
@@ -341,6 +341,28 @@ async def cmd_treasure(message: types.Message, state: FSMContext):
     )
     await state.set_state(TreasureForm.rooms)
 
+def clean_markdown(text: str) -> str:
+    """Убирает markdown-символы и превращает их в читаемый текст."""
+    import re
+    # Заголовки ###, ##, # -> убираем и добавляем эмодзи-разделитель
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    # Жирный **текст** и __текст__ -> оставляем текст
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    # Курсив *текст* и _текст_ -> оставляем текст
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'\1', text)
+    text = re.sub(r'(?<!_)_(?!_)(.+?)(?<!_)_(?!_)', r'\1', text)
+    # Горизонтальные линии --- -> длинная черта
+    text = re.sub(r'^-{3,}$', '─────────────', text, flags=re.MULTILINE)
+    # Ссылки [текст](url) -> текст
+    text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+    # Код `текст` -> текст
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    # Убираем лишние пустые строки
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 @dp.message(TreasureForm.rooms)
 async def treasure_rooms(message: types.Message, state: FSMContext):
     rooms = message.text
@@ -350,22 +372,39 @@ async def treasure_rooms(message: types.Message, state: FSMContext):
     wait_msg = await message.answer("✨ <i>Придумываю маршрут…</i>", parse_mode="HTML")
     
     try:
-        prompt = f"Придумай романтическую карту сокровищ для свидания дома из {rooms} комнат. У пары увлечения: {user[5]}, любимый фильм: {user[6]}. Опиши пошагово 4 локации (где искать записки) и финальный сюрприз. Формат: красивый список с эмодзи."
+        prompt = (
+            f"Придумай романтическую карту сокровищ для свидания дома из {rooms} комнат. "
+            f"У пары увлечения: {user[5]}, любимый фильм: {user[6]}. "
+            f"Опиши пошагово 4 локации (где искать записки) и финальный сюрприз. "
+            f"ВАЖНО: НЕ используй markdown-разметку (никаких ###, **, *, __, `). "
+            f"Используй только эмодзи и обычный текст. "
+            f"Каждую локацию начинай с эмодзи и жирного заголовка через HTML-тег <b>...</b>. "
+            f"Например: 📍 <b>Локация 1: Кинозал</b>. "
+            f"Формат — красивый, структурированный, с эмодзи и пустыми строками между блоками."
+        )
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "Ты возвращаешь только чистый текст без markdown. Используй только HTML-теги <b>, <i> и эмодзи."},
+                {"role": "user", "content": prompt}
+            ],
             temperature=0.8
         )
         text = response.choices[0].message.content
+        # На всякий случай чистим остатки markdown
+        text = clean_markdown(text)
         await wait_msg.edit_text(
-            f"🗺️ <b>Ваша карта сокровищ готова!</b>\n\n{text}\n\n"
+            f"🗺️ <b>Ваша карта сокровищ готова!</b>\n"
+            f"━━━━━━━━━━━━━━━\n\n"
+            f"{text}\n\n"
+            f"━━━━━━━━━━━━━━━\n"
             "Устройте незабываемый вечер 💕",
             parse_mode="HTML"
         )
     except Exception as e:
         print(f"AI ERROR: {e}")
         await wait_msg.edit_text(
-            "😔 Не получилось создать карту. Попробуйте позже.",
+            "😔 <b>Не получилось создать карту</b>\n\nПопробуйте ещё раз через минуту.",
             parse_mode="HTML"
         )
     
