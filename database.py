@@ -5,7 +5,6 @@ def init_db():
     conn = sqlite3.connect('cupidon.db')
     cur = conn.cursor()
     
-    # Таблица пользователей
     cur.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -21,7 +20,6 @@ def init_db():
     )
     ''')
     
-    # Таблица настроек частоты
     cur.execute('''
     CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER PRIMARY KEY,
@@ -29,7 +27,6 @@ def init_db():
     )
     ''')
     
-    # Таблица выполненных заданий
     cur.execute('''
     CREATE TABLE IF NOT EXISTS completed_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,24 +41,18 @@ def init_db():
     conn.close()
     print("База данных создана!")
 
-# Запускаем создание таблиц при импорте
 init_db()
-
-# --- Функции для работы с пользователями ---
 
 def add_user(user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language):
     conn = sqlite3.connect('cupidon.db')
     cur = conn.cursor()
     now = datetime.now().strftime('%Y-%m-%d')
     sub_end = (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d')
-    
     cur.execute('''
     INSERT INTO users (user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language, subscription_end, registered_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language, sub_end, now))
-    
     cur.execute('INSERT INTO user_settings (user_id) VALUES (?)', (user_id,))
-    
     conn.commit()
     conn.close()
 
@@ -83,6 +74,32 @@ def check_subscription(user_id):
         sub_end = datetime.strptime(result[0], '%Y-%m-%d')
         return sub_end >= datetime.now()
     return False
+
+def days_left(user_id):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    cur.execute('SELECT subscription_end FROM users WHERE user_id = ?', (user_id,))
+    result = cur.fetchone()
+    conn.close()
+    if result:
+        sub_end = datetime.strptime(result[0], '%Y-%m-%d')
+        delta = (sub_end - datetime.now()).days
+        return max(delta, 0)
+    return 0
+
+def extend_subscription(user_id, days=30):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    cur.execute('SELECT subscription_end FROM users WHERE user_id = ?', (user_id,))
+    result = cur.fetchone()
+    if result:
+        current_end = datetime.strptime(result[0], '%Y-%m-%d')
+        if current_end < datetime.now():
+            current_end = datetime.now()
+        new_end = current_end + timedelta(days=days)
+        cur.execute('UPDATE users SET subscription_end = ? WHERE user_id = ?', (new_end.strftime('%Y-%m-%d'), user_id))
+        conn.commit()
+    conn.close()
 
 def get_setting(user_id):
     conn = sqlite3.connect('cupidon.db')
@@ -110,6 +127,20 @@ def save_task(user_id, task_text):
     conn.commit()
     conn.close()
 
+def get_today_task(user_id):
+    """Возвращает (task_text, completed) для сегодняшнего задания или None."""
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    today = datetime.now().strftime('%Y-%m-%d')
+    cur.execute('''
+    SELECT task_text, completed FROM completed_tasks 
+    WHERE user_id = ? AND task_date = ? 
+    ORDER BY id DESC LIMIT 1
+    ''', (user_id, today))
+    result = cur.fetchone()
+    conn.close()
+    return result
+
 def mark_done(user_id):
     conn = sqlite3.connect('cupidon.db')
     cur = conn.cursor()
@@ -119,39 +150,31 @@ def mark_done(user_id):
     WHERE user_id = ? AND task_date = ?
     ''', (user_id, today))
     conn.commit()
+    rows = cur.rowcount
     conn.close()
-    return cur.rowcount > 0
+    return rows > 0
 
 def get_stats(user_id):
     conn = sqlite3.connect('cupidon.db')
     cur = conn.cursor()
     today = datetime.now()
     
-    # За неделю
     week_ago = (today - timedelta(days=7)).strftime('%Y-%m-%d')
-    cur.execute('''
-    SELECT COUNT(*) FROM completed_tasks 
-    WHERE user_id = ? AND task_date >= ? AND completed = 1
-    ''', (user_id, week_ago))
+    cur.execute('SELECT COUNT(*) FROM completed_tasks WHERE user_id = ? AND task_date >= ? AND completed = 1', (user_id, week_ago))
     week_count = cur.fetchone()[0]
     
-    # За месяц
     month_ago = (today - timedelta(days=30)).strftime('%Y-%m-%d')
-    cur.execute('''
-    SELECT COUNT(*) FROM completed_tasks 
-    WHERE user_id = ? AND task_date >= ? AND completed = 1
-    ''', (user_id, month_ago))
+    cur.execute('SELECT COUNT(*) FROM completed_tasks WHERE user_id = ? AND task_date >= ? AND completed = 1', (user_id, month_ago))
     month_count = cur.fetchone()[0]
     
-    # Серия (streak)
+    cur.execute('SELECT COUNT(*) FROM completed_tasks WHERE user_id = ? AND completed = 1', (user_id,))
+    total_count = cur.fetchone()[0]
+    
     streak = 0
     check_date = today
     while True:
         date_str = check_date.strftime('%Y-%m-%d')
-        cur.execute('''
-        SELECT completed FROM completed_tasks 
-        WHERE user_id = ? AND task_date = ?
-        ''', (user_id, date_str))
+        cur.execute('SELECT completed FROM completed_tasks WHERE user_id = ? AND task_date = ?', (user_id, date_str))
         result = cur.fetchone()
         if result and result[0] == 1:
             streak += 1
@@ -160,4 +183,4 @@ def get_stats(user_id):
             break
     
     conn.close()
-    return week_count, month_count, streak
+    return week_count, month_count, streak, total_count
