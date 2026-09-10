@@ -86,13 +86,14 @@ async def require_subscription(message: types.Message, user_id: int) -> bool:
     return True
 
 # --- Хелпер: генерация задания ---
+
 def generate_task_from_ai(user_id, task_type="text"):
     user = database.get_user(user_id)
     if not user:
         return None
     name, partner, meeting_date, place, hobbies, movie, love_lang = user[1], user[2], user[3], user[4], user[5], user[6], user[7]
     
-       if task_type == "photo":
+    if task_type == "photo":
         prompt = f"Придумай романтическое задание для пары. Они познакомились в {place}, любят {hobbies}, их любимый фильм {movie}, язык любви — {love_lang}. Попроси их найти старое совместное фото и отправить партнёру с тёплыми словами. Напиши только текст задания, 1-2 предложения. Без markdown-разметки, только обычный текст и эмодзи."
     else:
         prompt = f"Придумай простое, но очень тёплое и нешаблонное задание для пары. Они познакомились в {place}, обожают {hobbies}, их любимый фильм — {movie}. Задание на 5 минут. Упомяни их историю. Напиши только текст задания, начни с имени {name}. Без markdown-разметки, только обычный текст и эмодзи."
