@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
+from aiogram.enums import ChatAction
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -12,6 +13,7 @@ from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from openai import OpenAI
 from aiohttp import web
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -217,6 +219,13 @@ async def cmd_task(message: types.Message):
     
     today_task = database.get_today_task(user_id)
     
+    # Inline-кнопки под заданием
+    task_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Выполнено", callback_data="task_done")],
+        [InlineKeyboardButton(text="🔄 Другое задание", callback_data="task_new"),
+         InlineKeyboardButton(text="⏰ Напомнить позже", callback_data="task_later")]
+    ])
+    
     if today_task:
         task_text, completed = today_task
         if completed:
@@ -231,11 +240,13 @@ async def cmd_task(message: types.Message):
             await message.answer(
                 f"📝 <b>Ваше задание на сегодня:</b>\n\n"
                 f"💌 {task_text}\n\n"
-                "Когда выполните — нажмите <b>✅ Выполнено</b>.",
+                "Когда выполните — нажмите кнопку ниже 👇",
+                reply_markup=task_keyboard,
                 parse_mode="HTML"
             )
             return
     
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
     wait_msg = await message.answer("✨ <i>Создаю для вас особенное задание…</i>", parse_mode="HTML")
     
     try:
@@ -253,9 +264,75 @@ async def cmd_task(message: types.Message):
     await wait_msg.edit_text(
         f"📝 <b>Ваше задание на сегодня:</b>\n\n"
         f"💌 {task_text}\n\n"
-        "Когда выполните — нажмите <b>✅ Выполнено</b>.",
+        "Когда выполните — нажмите кнопку ниже 👇",
+        reply_markup=task_keyboard,
         parse_mode="HTML"
     )
+
+@dp.callback_query(F.data == "task_done")
+async def callback_done(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    today_task = database.get_today_task(user_id)
+    
+    if not today_task:
+        await callback.answer("Задания на сегодня нет.", show_alert=True)
+        return
+    
+    task_text, completed = today_task
+    if completed:
+        await callback.answer("Уже выполнено ✅", show_alert=False)
+        return
+    
+    database.mark_done(user_id)
+    await callback.message.edit_text(
+        "✅ <b>Отлично!</b>\n\n"
+        "Задание выполнено. Вы делаете свои отношения крепче с каждым днём 💪💕",
+        parse_mode="HTML"
+    )
+    await callback.answer("Задание выполнено!")
+
+
+@dp.callback_query(F.data == "task_new")
+async def callback_new(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    
+    if not await require_subscription(callback.message, user_id):
+        await callback.answer()
+        return
+    
+    await callback.message.edit_text("✨ <i>Создаю новое задание…</i>", parse_mode="HTML")
+    await bot.send_chat_action(chat_id=callback.message.chat.id, action=ChatAction.TYPING)
+    
+    try:
+        task_text = generate_task_from_ai(user_id, "text")
+    except Exception as e:
+        print(f"AI ERROR: {e}")
+        await callback.message.edit_text("😔 Не получилось. Попробуйте позже.")
+        await callback.answer()
+        return
+    
+    database.save_task(user_id, task_text)
+    
+    task_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Выполнено", callback_data="task_done")],
+        [InlineKeyboardButton(text="🔄 Другое задание", callback_data="task_new"),
+         InlineKeyboardButton(text="⏰ Напомнить позже", callback_data="task_later")]
+    ])
+    
+    await callback.message.edit_text(
+        f"📝 <b>Ваше новое задание:</b>\n\n"
+        f"💌 {task_text}\n\n"
+        "Когда выполните — нажмите кнопку ниже 👇",
+        reply_markup=task_keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer("Новое задание готово!")
+
+
+@dp.callback_query(F.data == "task_later")
+async def callback_later(callback: CallbackQuery):
+    await callback.answer("Ок! Напомню вечером в 19:00 ⏰", show_alert=True)
+    await callback.message.edit_reply_markup(reply_markup=None)
 
 # --- Выполнено ---
 @dp.message(Command("done"))
@@ -370,7 +447,7 @@ async def treasure_rooms(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     user = database.get_user(user_id)
     
-    wait_msg = await message.answer("✨ <i>Придумываю маршрут…</i>", parse_mode="HTML")
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
     
     try:
         prompt = (
@@ -528,6 +605,35 @@ async def send_daily_tasks():
             print(f"Ошибка отправки пользователю {user_id}: {e}")
 
 scheduler.add_job(send_daily_tasks, "cron", hour=9, minute=0)
+
+
+async def send_evening_reminder():
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    today = datetime.now().strftime('%Y-%m-%d')
+    cur.execute('''
+        SELECT c.user_id FROM completed_tasks c
+        WHERE c.task_date = ? AND c.completed = 0
+    ''', (today,))
+    users = cur.fetchall()
+    conn.close()
+    
+    for (user_id,) in users:
+        try:
+            await bot.send_message(
+                user_id,
+                "🌙 <b>Напоминание</b>\n\n"
+                "Вы ещё не отметили задание на сегодня. Оно займёт всего 5 минут — "
+                "а вечер станет теплее 💕\n\n"
+                "Нажмите <b>📝 Задание</b>, чтобы посмотреть его, "
+                "или <b>✅ Выполнено</b>, если уже сделали.",
+                parse_mode="HTML"
+            )
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            print(f"Ошибка напоминания {user_id}: {e}")
+
+scheduler.add_job(send_evening_reminder, "cron", hour=19, minute=0)
 
 # ============ ВЕБ-СЕРВЕР ============
 
