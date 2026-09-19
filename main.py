@@ -44,7 +44,10 @@ class RegistrationForm(StatesGroup):
     love_language = State()
 
 class TreasureForm(StatesGroup):
+    scale = State()
+    budget = State()
     rooms = State()
+    city = State()
 class FeedbackForm(StatesGroup):
     waiting_feedback = State()
 
@@ -98,79 +101,78 @@ def generate_task_from_ai(user_id, task_type="text", category=None):
     
     name, partner, meeting_date, place, hobbies, movie, love_lang = user[1], user[2], user[3], user[4], user[5], user[6], user[7]
     
-    # Получаем последние 3 комментария пользователя — что ему не понравилось
     feedback_list = database.get_recent_feedback(user_id, limit=3)
     feedback_text = ""
     if feedback_list:
-        feedback_text = "\n\nВАЖНО! Пользователь ранее оставлял такие пожелания к прошлым заданиям (учти это, не повторяй ошибки):\n"
+        feedback_text = "\n\nВАЖНО! Пользователь ранее жаловался на такие вещи в заданиях (НЕ повторяй):\n"
         for i, fb in enumerate(feedback_list, 1):
             feedback_text += f"{i}. {fb}\n"
     
-    # Категория задания (если не задана — выбирается случайная)
     if not category:
-        categories = ["разговор", "сюрприз", "воспоминание", "близость", "игра"]
+        categories = ["разговор", "сюрприз", "воспоминание", "близость", "игра", "приключение", "творчество"]
         import random
         category = random.choice(categories)
     
     category_instructions = {
-        "разговор": "Задание должно побудить пару к глубокому, тёплому разговору. Например, задать друг другу неожиданный вопрос о чувствах, мечтах или общих планах.",
-        "сюрприз": "Задание должно быть про маленький неожиданный сюрприз для партнёра. Например, оставить записку, приготовить что-то приятное, отправить неожиданное сообщение.",
-        "воспоминание": "Задание должно вернуть пару к тёплому совместному воспоминанию. Например, найти старое фото, рассказать историю, вернуться на место знакомства.",
-        "близость": "Задание должно быть про физическую или эмоциональную близость. Например, объятие на 20 секунд, массаж плеч, взгляд в глаза без слов.",
-        "игра": "Задание должно быть игровым и весёлым. Например, сыграть в игру, устроить челлендж, придумать совместный ритуал.",
+        "разговор": "Квест должен привести пару к глубокому, неожиданному разговору. Не просто 'поговорите о чувствах', а конкретный сценарий: например, вопрос из конверта, игра в 'правда или действие', обмен мечтами на год вперёд.",
+        "сюрприз": "Квест должен быть про тайный сюрприз для партнёра. Конкретика: спрятанная записка, неожиданный звонок, маленький подарок без повода, завтрак в постель.",
+        "воспоминание": "Квест должен вернуть пару в тёплое прошлое. Конкретика: найти старое фото, воссоздать момент первого свидания, написать письмо 'в прошлое' себе или партнёру.",
+        "близость": "Квест должен быть про близость, но ИНТЕРЕСНЫЙ, а не банальный. Не 'обнимитесь', а, например, 'расскажи партнёру 3 вещи, которые ты в нём обожаешь, глядя в глаза'.",
+        "игра": "Квест должен быть игровым. Конкретика: настольная игра на ставки, челлендж, соревнование, квест с загадками.",
+        "приключение": "Квест должен быть про приключение — можно выйти из дома или сделать приключение внутри квартиры. Конкретика: секретная миссия, поиск сокровищ, исследование нового места.",
+        "творчество": "Квест должен быть творческим. Конкретика: вместе приготовить новое блюдо, нарисовать друг друга, придумать песню, написать совместный рассказ.",
     }
     
     if task_type == "photo":
         prompt = (
-            f"Ты — опытный психолог-консультант по отношениям и автор тренингов для пар. "
-            f"Придумай ОДНО оригинальное задание для пары на сегодня.\n\n"
-            f"Данные пары:\n"
-            f"— Имя: {name}\n"
-            f"— Партнёра: {partner}\n"
-            f"— Познакомились: {place}\n"
-            f"— Общие увлечения: {hobbies}\n"
-            f"— Любимый фильм: {movie}\n"
-            f"— Язык любви: {love_lang}\n\n"
-            f"Категория задания: воспоминание.\n"
-            f"Задание связано с поиском старого совместного фото и отправкой партнёру с тёплыми словами."
+            f"Ты — креативный автор романтических квестов для пар. Придумай ОДИН интересный МНОГОШАГОВЫЙ квест.\n\n"
+            f"Данные пары:\n— Имя: {name}\n— Партнёра: {partner}\n— Познакомились: {place}\n"
+            f"— Увлечения: {hobbies}\n— Любимый фильм: {movie}\n— Язык любви: {love_lang}\n\n"
+            f"Категория: воспоминание (со старой фотографией)."
             f"{feedback_text}\n\n"
-            f"Требования:\n"
-            f"— Обращайся к человеку по имени {name}\n"
-            f"— Задание на 5 минут\n"
-            f"— Без markdown (никаких **, ##, *)\n"
-            f"— Не банальное, конкретное, живое\n"
-            f"— Напиши только текст задания, 1–2 предложения"
+            f"ФОРМАТ ОТВЕТА (строго):\n"
+            f"🎯 Квест «[название]»\n\n"
+            f"Шаг 1. [конкретное действие]\n"
+            f"Шаг 2. [конкретное действие]\n"
+            f"Шаг 3. [конкретное действие]\n\n"
+            f"⏱ Время: [X] минут\n"
+            f"💡 Фишка: [одна фраза — почему это интересно]\n\n"
+            f"ТРЕБОВАНИЯ:\n"
+            f"— Каждый шаг конкретный, выполнимый\n"
+            f"— Не банально, не про объятия и взгляды\n"
+            f"— Упомяни имена или историю пары\n"
+            f"— Без markdown (никаких **, ##, *)"
         )
     else:
         prompt = (
-            f"Ты — опытный психолог-консультант по отношениям и автор тренингов для пар. "
-            f"Придумай ОДНО оригинальное задание для пары на сегодня.\n\n"
-            f"Данные пары:\n"
-            f"— Имя: {name}\n"
-            f"— Партнёра: {partner}\n"
-            f"— Познакомились: {place}\n"
-            f"— Общие увлечения: {hobbies}\n"
-            f"— Любимый фильм: {movie}\n"
-            f"— Язык любви: {love_lang}\n\n"
-            f"Категория задания: {category}.\n"
-            f"{category_instructions[category]}"
+            f"Ты — креативный автор романтических квестов для пар. Придумай ОДИН интересный МНОГОШАГОВЫЙ квест.\n\n"
+            f"Данные пары:\n— Имя: {name}\n— Партнёра: {partner}\n— Познакомились: {place}\n"
+            f"— Увлечения: {hobbies}\n— Любимый фильм: {movie}\n— Язык любви: {love_lang}\n\n"
+            f"Категория: {category}.\n{category_instructions[category]}"
             f"{feedback_text}\n\n"
-            f"Требования:\n"
-            f"— Обращайся к человеку по имени {name}\n"
-            f"— Задание на 5 минут, конкретное и выполнимое\n"
+            f"ФОРМАТ ОТВЕТА (строго):\n"
+            f"🎯 Квест «[название]»\n\n"
+            f"Шаг 1. [конкретное действие]\n"
+            f"Шаг 2. [конкретное действие]\n"
+            f"Шаг 3. [конкретное действие]\n\n"
+            f"⏱ Время: [X] минут\n"
+            f"💡 Фишка: [одна фраза — почему это интересно]\n\n"
+            f"ТРЕБОВАНИЯ:\n"
+            f"— 3 чётких шага, каждый выполнимый за 5 минут\n"
+            f"— ЗАПРЕЩЕНО: задания в стиле 'обнимитесь', 'посмотрите в глаза', 'скажите что любите'. Это банально!\n"
+            f"— Используй их историю: место знакомства, увлечения, фильм\n"
+            f"— Добавь интригу, неожиданность, конкретику (числа, предметы, места)\n"
             f"— Без markdown (никаких **, ##, *)\n"
-            f"— Избегай банальностей типа 'скажи что любишь'. Придумай что-то свежее\n"
-            f"— Упомяни их историю (место знакомства или увлечения) для персонализации\n"
-            f"— Напиши ТОЛЬКО текст задания, без вступлений и пояснений"
+            f"— Пиши на русском, тепло, но без соплей"
         )
     
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "Ты креативный психолог. Пишешь живые, необычные задания. Никогда не используешь markdown."},
+            {"role": "system", "content": "Ты креативный автор романтических квестов. Пишешь живо, конкретно, без банальностей. Никогда не используешь markdown."},
             {"role": "user", "content": prompt}
         ],
-        temperature=1.0
+        temperature=1.1
     )
     return response.choices[0].message.content.strip()
 
@@ -278,7 +280,8 @@ async def reg_love(message: types.Message, state: FSMContext):
 # --- Задание ---
 @dp.message(Command("task"))
 @dp.message(F.text == "📝 Задание")
-async def cmd_task(message: types.Message):
+async def cmd_task(message: types.Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     
     if not await require_subscription(message, user_id):
@@ -441,7 +444,8 @@ async def process_feedback(message: types.Message, state: FSMContext):
 # --- Выполнено ---
 @dp.message(Command("done"))
 @dp.message(F.text == "✅ Выполнено")
-async def cmd_done(message: types.Message):
+async def cmd_done(message: types.Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     
     if not await require_subscription(message, user_id):
@@ -477,7 +481,8 @@ async def cmd_done(message: types.Message):
 # --- Статистика ---
 @dp.message(Command("stats"))
 @dp.message(F.text == "📊 Статистика")
-async def cmd_stats(message: types.Message):
+async def cmd_stats(message: types.Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     
     if not await require_subscription(message, user_id):
@@ -511,17 +516,194 @@ async def cmd_stats(message: types.Message):
 @dp.message(Command("treasure"))
 @dp.message(F.text == "🗺️ Карта сокровищ")
 async def cmd_treasure(message: types.Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     
     if not await require_subscription(message, user_id):
         return
     
+    scale_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Дома", callback_data="treasure_home")],
+        [InlineKeyboardButton(text="🏙 По городу", callback_data="treasure_city")],
+        [InlineKeyboardButton(text="✈️ Путешествие", callback_data="treasure_trip")],
+    ])
+    
     await message.answer(
-        "🗺️ <b>Создаём карту сокровищ для свидания дома</b>\n\n"
-        "Сколько комнат в вашей квартире? Напишите цифру.",
+        "🗺️ <b>Карта сокровищ — приключение для двоих</b>\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "Я создам для вас настоящий квест с загадками, локациями и финальным сюрпризом.\n\n"
+        "Сначала выберите <b>масштаб приключения</b> 👇",
+        reply_markup=scale_keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(TreasureForm.scale)
+
+
+@dp.callback_query(F.data == "treasure_home")
+async def treasure_home(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.update_data(scale="home")
+    await callback.message.edit_text(
+        "🏠 <b>Домашнее приключение</b>\n\n"
+        "Сколько комнат в вашей квартире? Напишите цифру (например: 2).",
         parse_mode="HTML"
     )
     await state.set_state(TreasureForm.rooms)
+
+
+@dp.callback_query(F.data == "treasure_city")
+async def treasure_city(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.update_data(scale="city")
+    await callback.message.edit_text(
+        "🏙 <b>Приключение по городу</b>\n\n"
+        "Напишите название вашего города (например: Москва).",
+        parse_mode="HTML"
+    )
+    await state.set_state(TreasureForm.city)
+
+
+@dp.callback_query(F.data == "treasure_trip")
+async def treasure_trip(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.update_data(scale="trip")
+    await callback.message.edit_text(
+        "✈️ <b>Приключение в путешествии</b>\n\n"
+        "Куда вы едете или хотите поехать? Напишите город или страну.",
+        parse_mode="HTML"
+    )
+    await state.set_state(TreasureForm.city)
+
+
+@dp.message(TreasureForm.city)
+async def treasure_city_input(message: types.Message, state: FSMContext):
+    await state.update_data(city=message.text)
+    await ask_budget(message, state)
+
+
+@dp.message(TreasureForm.rooms)
+async def treasure_rooms_input(message: types.Message, state: FSMContext):
+    await state.update_data(rooms=message.text)
+    await ask_budget(message, state)
+
+
+async def ask_budget(message: types.Message, state: FSMContext):
+    budget_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🆓 Бесплатно (0 ₽)", callback_data="budget_free")],
+        [InlineKeyboardButton(text="💵 До 1000 ₽", callback_data="budget_low")],
+        [InlineKeyboardButton(text="💰 До 5000 ₽", callback_data="budget_mid")],
+        [InlineKeyboardButton(text="💎 Без ограничений", callback_data="budget_high")],
+    ])
+    await message.answer(
+        "💸 <b>Какой у вас бюджет на это приключение?</b>",
+        reply_markup=budget_keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(TreasureForm.budget)
+
+
+@dp.callback_query(F.data.startswith("budget_"))
+async def treasure_budget(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    budget_map = {
+        "budget_free": "бесплатно (только подручные средства, записки, подсказки дома или на улице)",
+        "budget_low": "до 1000 рублей (кофе, небольшой подарок, цветы)",
+        "budget_mid": "до 5000 рублей (ужин, билеты, небольшой сюрприз)",
+        "budget_high": "без ограничений (можно арендовать, заказать, купить серьёзный подарок)"
+    }
+    budget = budget_map[callback.data]
+    await state.update_data(budget=budget)
+    
+    data = await state.get_data()
+    scale = data.get("scale", "home")
+    rooms = data.get("rooms", "2")
+    city = data.get("city", "ваш город")
+    
+    await callback.message.edit_text("✨ <i>Создаю для вас настоящее приключение…</i>", parse_mode="HTML")
+    await bot.send_chat_action(chat_id=callback.message.chat.id, action=ChatAction.TYPING)
+    
+    user_id = callback.from_user.id
+    user = database.get_user(user_id)
+    
+    if scale == "home":
+        location_info = f"приключение дома, в квартире из {rooms} комнат"
+    elif scale == "city":
+        location_info = f"приключение по городу {city}"
+    else:
+        location_info = f"приключение в путешествии ({city})"
+    
+    prompt = (
+        f"Ты — автор захватывающих романтических квестов. Создай ПОЛНОЦЕННОЕ приключение для пары.\n\n"
+        f"Данные пары:\n— Имя: {user[1]}\n— Партнёр: {user[2]}\n— Увлечения: {user[5]}\n— Любимый фильм: {user[6]}\n\n"
+        f"Формат: {location_info}.\n"
+        f"Бюджет: {budget}.\n\n"
+        f"СОЗДАЙ КВЕСТ по такой структуре:\n\n"
+        f"🗺️ <b>Название приключения</b>\n"
+        f"[Красивое, интригующее название]\n\n"
+        f"📜 <b>Легенда</b>\n"
+        f"[2-3 предложения — вступление: почему они отправляются в путь, что ищут]\n\n"
+        f"🎯 <b>Цель</b>\n"
+        f"[Что должны найти в конце]\n\n"
+        f"📍 <b>Локация 1: [название]</b>\n"
+        f"[Что там делать, какую записку найти, какую загадку разгадать]\n\n"
+        f"📍 <b>Локация 2: [название]</b>\n"
+        "[...]\n\n"
+        f"📍 <b>Локация 3: [название]</b>\n"
+        "[...]\n\n"
+        f"📍 <b>Локация 4: [название]</b>\n"
+        "[...]\n\n"
+        f"🎁 <b>Финальный сюрприз</b>\n"
+        f"[Что ждёт их в конце — конкретно, с учётом бюджета]\n\n"
+        f"💡 <b>Совет</b>\n"
+        f"[Одна идея по атмосфере: музыка, свет, время дня]\n\n"
+        f"ТРЕБОВАНИЯ:\n"
+        f"— Каждая локация конкретная (что делать, где искать, что найти)\n"
+        f"— Загадки и подсказки, а не просто 'обнимитесь'\n"
+        f"— Упомяни их увлечения ({user[5]}) и любимый фильм ({user[6]})\n"
+        f"— Учитывай бюджет: {budget}\n"
+        f"— Без markdown (никаких ###, **, *)\n"
+        f"— Используй только HTML-теги <b> и <i> и эмодзи\n"
+        f"— Пиши живо, атмосферно, как в хорошем квесте"
+    )
+    
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "Ты автор романтических квестов. Пишешь атмосферно, конкретно. Используешь только HTML-теги <b>, <i> и эмодзи."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=1.0
+        )
+        text = response.choices[0].message.content
+        text = clean_markdown(text)
+        
+        # Разбиваем длинное сообщение на части (Telegram лимит 4096 символов)
+        full_text = f"🗺️ <b>Ваше приключение готово!</b>\n━━━━━━━━━━━━━━━\n\n{text}"
+        
+        if len(full_text) <= 4000:
+            await callback.message.edit_text(full_text, parse_mode="HTML")
+        else:
+            # Отправляем по частям
+            await callback.message.edit_text("🗺️ <b>Ваше приключение готово!</b>", parse_mode="HTML")
+            chunks = [text[i:i+3800] for i in range(0, len(text), 3800)]
+            for chunk in chunks:
+                await callback.message.answer(chunk, parse_mode="HTML")
+        
+        await callback.message.answer(
+            "━━━━━━━━━━━━━━━\n"
+            "Устройте незабываемое приключение 💕\n\n"
+            "Хотите другое? Нажмите <b>🗺️ Карта сокровищ</b> снова.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        print(f"AI ERROR: {e}")
+        await callback.message.edit_text(
+            "😔 <b>Не получилось создать приключение</b>\n\nПопробуйте через минуту.",
+            parse_mode="HTML"
+        )
+    
+    await state.clear()
 
 def clean_markdown(text: str) -> str:
     """Убирает markdown-символы и превращает их в читаемый текст."""
@@ -544,58 +726,11 @@ def clean_markdown(text: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
-
-@dp.message(TreasureForm.rooms)
-async def treasure_rooms(message: types.Message, state: FSMContext):
-    rooms = message.text
-    user_id = message.from_user.id
-    user = database.get_user(user_id)
-    
-    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
-    
-    try:
-        prompt = (
-            f"Придумай романтическую карту сокровищ для свидания дома из {rooms} комнат. "
-            f"У пары увлечения: {user[5]}, любимый фильм: {user[6]}. "
-            f"Опиши пошагово 4 локации (где искать записки) и финальный сюрприз. "
-            f"ВАЖНО: НЕ используй markdown-разметку (никаких ###, **, *, __, `). "
-            f"Используй только эмодзи и обычный текст. "
-            f"Каждую локацию начинай с эмодзи и жирного заголовка через HTML-тег <b>...</b>. "
-            f"Например: 📍 <b>Локация 1: Кинозал</b>. "
-            f"Формат — красивый, структурированный, с эмодзи и пустыми строками между блоками."
-        )
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": "Ты возвращаешь только чистый текст без markdown. Используй только HTML-теги <b>, <i> и эмодзи."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.8
-        )
-        text = response.choices[0].message.content
-        # На всякий случай чистим остатки markdown
-        text = clean_markdown(text)
-        await wait_msg.edit_text(
-            f"🗺️ <b>Ваша карта сокровищ готова!</b>\n"
-            f"━━━━━━━━━━━━━━━\n\n"
-            f"{text}\n\n"
-            f"━━━━━━━━━━━━━━━\n"
-            "Устройте незабываемый вечер 💕",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        print(f"AI ERROR: {e}")
-        await wait_msg.edit_text(
-            "😔 <b>Не получилось создать карту</b>\n\nПопробуйте ещё раз через минуту.",
-            parse_mode="HTML"
-        )
-    
-    await state.clear()
-
 # --- Настройки ---
 @dp.message(Command("settings"))
 @dp.message(F.text == "⚙️ Настройки")
-async def cmd_settings(message: types.Message):
+async def cmd_settings(message: types.Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     if not await require_subscription(message, user_id):
         return
@@ -628,10 +763,9 @@ async def back_to_menu(message: types.Message):
 # --- Подписка ---
 @dp.message(Command("subscribe"))
 @dp.message(F.text == "💎 Подписка")
-async def cmd_subscribe(message: types.Message):
+async def cmd_subscribe(message: types.Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
-    days = database.days_left(user_id)
-    user = database.get_user(user_id)
     
     if not user:
         await message.answer("Сначала пройдите регистрацию — нажмите /start")
