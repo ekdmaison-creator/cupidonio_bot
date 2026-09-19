@@ -45,6 +45,8 @@ class RegistrationForm(StatesGroup):
 
 class TreasureForm(StatesGroup):
     rooms = State()
+class FeedbackForm(StatesGroup):
+    waiting_feedback = State()
 
 # --- Клавиатуры ---
 main_menu = ReplyKeyboardMarkup(
@@ -89,23 +91,88 @@ async def require_subscription(message: types.Message, user_id: int) -> bool:
 
 # --- Хелпер: генерация задания ---
 
-def generate_task_from_ai(user_id, task_type="text"):
+def generate_task_from_ai(user_id, task_type="text", category=None):
     user = database.get_user(user_id)
     if not user:
         return None
+    
     name, partner, meeting_date, place, hobbies, movie, love_lang = user[1], user[2], user[3], user[4], user[5], user[6], user[7]
     
+    # Получаем последние 3 комментария пользователя — что ему не понравилось
+    feedback_list = database.get_recent_feedback(user_id, limit=3)
+    feedback_text = ""
+    if feedback_list:
+        feedback_text = "\n\nВАЖНО! Пользователь ранее оставлял такие пожелания к прошлым заданиям (учти это, не повторяй ошибки):\n"
+        for i, fb in enumerate(feedback_list, 1):
+            feedback_text += f"{i}. {fb}\n"
+    
+    # Категория задания (если не задана — выбирается случайная)
+    if not category:
+        categories = ["разговор", "сюрприз", "воспоминание", "близость", "игра"]
+        import random
+        category = random.choice(categories)
+    
+    category_instructions = {
+        "разговор": "Задание должно побудить пару к глубокому, тёплому разговору. Например, задать друг другу неожиданный вопрос о чувствах, мечтах или общих планах.",
+        "сюрприз": "Задание должно быть про маленький неожиданный сюрприз для партнёра. Например, оставить записку, приготовить что-то приятное, отправить неожиданное сообщение.",
+        "воспоминание": "Задание должно вернуть пару к тёплому совместному воспоминанию. Например, найти старое фото, рассказать историю, вернуться на место знакомства.",
+        "близость": "Задание должно быть про физическую или эмоциональную близость. Например, объятие на 20 секунд, массаж плеч, взгляд в глаза без слов.",
+        "игра": "Задание должно быть игровым и весёлым. Например, сыграть в игру, устроить челлендж, придумать совместный ритуал.",
+    }
+    
     if task_type == "photo":
-        prompt = f"Придумай романтическое задание для пары. Они познакомились в {place}, любят {hobbies}, их любимый фильм {movie}, язык любви — {love_lang}. Попроси их найти старое совместное фото и отправить партнёру с тёплыми словами. Напиши только текст задания, 1-2 предложения. Без markdown-разметки, только обычный текст и эмодзи."
+        prompt = (
+            f"Ты — опытный психолог-консультант по отношениям и автор тренингов для пар. "
+            f"Придумай ОДНО оригинальное задание для пары на сегодня.\n\n"
+            f"Данные пары:\n"
+            f"— Имя: {name}\n"
+            f"— Партнёра: {partner}\n"
+            f"— Познакомились: {place}\n"
+            f"— Общие увлечения: {hobbies}\n"
+            f"— Любимый фильм: {movie}\n"
+            f"— Язык любви: {love_lang}\n\n"
+            f"Категория задания: воспоминание.\n"
+            f"Задание связано с поиском старого совместного фото и отправкой партнёру с тёплыми словами."
+            f"{feedback_text}\n\n"
+            f"Требования:\n"
+            f"— Обращайся к человеку по имени {name}\n"
+            f"— Задание на 5 минут\n"
+            f"— Без markdown (никаких **, ##, *)\n"
+            f"— Не банальное, конкретное, живое\n"
+            f"— Напиши только текст задания, 1–2 предложения"
+        )
     else:
-        prompt = f"Придумай простое, но очень тёплое и нешаблонное задание для пары. Они познакомились в {place}, обожают {hobbies}, их любимый фильм — {movie}. Задание на 5 минут. Упомяни их историю. Напиши только текст задания, начни с имени {name}. Без markdown-разметки, только обычный текст и эмодзи."
+        prompt = (
+            f"Ты — опытный психолог-консультант по отношениям и автор тренингов для пар. "
+            f"Придумай ОДНО оригинальное задание для пары на сегодня.\n\n"
+            f"Данные пары:\n"
+            f"— Имя: {name}\n"
+            f"— Партнёра: {partner}\n"
+            f"— Познакомились: {place}\n"
+            f"— Общие увлечения: {hobbies}\n"
+            f"— Любимый фильм: {movie}\n"
+            f"— Язык любви: {love_lang}\n\n"
+            f"Категория задания: {category}.\n"
+            f"{category_instructions[category]}"
+            f"{feedback_text}\n\n"
+            f"Требования:\n"
+            f"— Обращайся к человеку по имени {name}\n"
+            f"— Задание на 5 минут, конкретное и выполнимое\n"
+            f"— Без markdown (никаких **, ##, *)\n"
+            f"— Избегай банальностей типа 'скажи что любишь'. Придумай что-то свежее\n"
+            f"— Упомяни их историю (место знакомства или увлечения) для персонализации\n"
+            f"— Напиши ТОЛЬКО текст задания, без вступлений и пояснений"
+        )
     
     response = client.chat.completions.create(
         model="deepseek-chat",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.9
+        messages=[
+            {"role": "system", "content": "Ты креативный психолог. Пишешь живые, необычные задания. Никогда не используешь markdown."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=1.0
     )
-    return response.choices[0].message.content
+    return response.choices[0].message.content.strip()
 
 # ============ КОМАНДЫ ============
 
@@ -223,7 +290,8 @@ async def cmd_task(message: types.Message):
     task_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Выполнено", callback_data="task_done")],
         [InlineKeyboardButton(text="🔄 Другое задание", callback_data="task_new"),
-         InlineKeyboardButton(text="⏰ Напомнить позже", callback_data="task_later")]
+         InlineKeyboardButton(text="⏰ Напомнить позже", callback_data="task_later")],
+        [InlineKeyboardButton(text="❌ Не понравилось", callback_data="task_dislike")]
     ])
     
     if today_task:
@@ -316,7 +384,8 @@ async def callback_new(callback: CallbackQuery):
     task_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Выполнено", callback_data="task_done")],
         [InlineKeyboardButton(text="🔄 Другое задание", callback_data="task_new"),
-         InlineKeyboardButton(text="⏰ Напомнить позже", callback_data="task_later")]
+         InlineKeyboardButton(text="⏰ Напомнить позже", callback_data="task_later")],
+        [InlineKeyboardButton(text="❌ Не понравилось", callback_data="task_dislike")]
     ])
     
     await callback.message.edit_text(
@@ -333,6 +402,41 @@ async def callback_new(callback: CallbackQuery):
 async def callback_later(callback: CallbackQuery):
     await callback.answer("Ок! Напомню вечером в 19:00 ⏰", show_alert=True)
     await callback.message.edit_reply_markup(reply_markup=None)
+
+@dp.callback_query(F.data == "task_dislike")
+async def callback_dislike(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "🤔 <b>Понял, спасибо за честность!</b>\n\n"
+        "Напиши, что именно не так? Например:\n"
+        "— слишком банальное\n"
+        "— не подходит нам\n"
+        "— хочу больше романтики\n"
+        "— хочу больше игры\n\n"
+        "Я учту это в следующих заданиях 👇",
+        parse_mode="HTML"
+    )
+    await state.set_state(FeedbackForm.waiting_feedback)
+
+
+@dp.message(FeedbackForm.waiting_feedback)
+async def process_feedback(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    feedback = message.text.strip()
+    
+    # Сохраняем фидбек
+    today_task = database.get_today_task(user_id)
+    task_text = today_task[0] if today_task else "—"
+    database.save_feedback(user_id, task_text, feedback)
+    
+    await message.answer(
+        "💾 <b>Записал!</b>\n\n"
+        "Теперь буду учитывать это при генерации новых заданий. "
+        "Нажми <b>📝 Задание</b>, чтобы получить свежее задание ✨",
+        parse_mode="HTML"
+    )
+    await state.clear()
 
 # --- Выполнено ---
 @dp.message(Command("done"))

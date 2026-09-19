@@ -37,6 +37,16 @@ def init_db():
     )
     ''')
     
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS task_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        task_text TEXT,
+        feedback TEXT,
+        created_at TEXT
+    )
+    ''')
+    
     conn.commit()
     conn.close()
     print("База данных создана!")
@@ -184,3 +194,26 @@ def get_stats(user_id):
     
     conn.close()
     return week_count, month_count, streak, total_count
+
+def save_feedback(user_id, task_text, feedback):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cur.execute('''
+    INSERT INTO task_feedback (user_id, task_text, feedback, created_at)
+    VALUES (?, ?, ?, ?)
+    ''', (user_id, task_text, feedback, now))
+    conn.commit()
+    conn.close()
+
+def get_recent_feedback(user_id, limit=3):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    cur.execute('''
+    SELECT feedback FROM task_feedback 
+    WHERE user_id = ? 
+    ORDER BY id DESC LIMIT ?
+    ''', (user_id, limit))
+    results = cur.fetchall()
+    conn.close()
+    return [r[0] for r in results]
