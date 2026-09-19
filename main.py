@@ -1,3 +1,5 @@
+import aiohttp
+import urllib.parse
 import asyncio
 import os
 import sqlite3
@@ -93,6 +95,54 @@ async def require_subscription(message: types.Message, user_id: int) -> bool:
     return True
 
 # --- Хелпер: генерация задания ---
+
+async def search_places(query: str, city: str = None, limit: int = 5):
+    """
+    Ищет реальные места через OpenStreetMap Nominatim.
+    Возвращает список словарей: [{name, address, lat, lon}, ...]
+    """
+    if city:
+        query = f"{query}, {city}"
+    
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": query,
+        "format": "json",
+        "limit": limit,
+        "addressdetails": 1,
+        "accept-language": "ru"
+    }
+    headers = {"User-Agent": "CupidonioBot/1.0"}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, headers=headers, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    results = []
+                    for item in data:
+                        results.append({
+                            "name": item.get("display_name", "").split(",")[0],
+                            "address": item.get("display_name", ""),
+                            "lat": item.get("lat"),
+                            "lon": item.get("lon"),
+                            "type": item.get("type", "")
+                        })
+                    return results
+    except Exception as e:
+        print(f"OSM search error: {e}")
+    return []
+
+
+def format_places_for_prompt(places: list) -> str:
+    """Превращает список мест в текст для промпта."""
+    if not places:
+        return "Реальные места не найдены, используй общие описания без конкретных адресов."
+    
+    lines = []
+    for i, p in enumerate(places, 1):
+        lines.append(f"{i}. {p['name']} — {p['address']} (координаты: {p['lat']}, {p['lon']})")
+    return "\n".join(lines)
 
 def generate_task_from_ai(user_id, task_type="text", category=None):
     user = database.get_user(user_id)
@@ -632,11 +682,24 @@ async def treasure_budget(callback: CallbackQuery, state: FSMContext):
     else:
         location_info = f"приключение в путешествии ({city})"
     
+    # Ищем реальные места в городе через OpenStreetMap
+    real_places_text = ""
+    if scale == "city" and city:
+        # Ищем романтичные места
+        parks = await search_places("парк", city, limit=3)
+        embankments = await search_places("набережная", city, limit=2)
+        cafes = await search_places("кафе", city, limit=2)
+        all_places = parks + embankments + cafes
+        real_places_text = f"\n\nРЕАЛЬНЫЕ МЕСТА В ГОРОДЕ (используй ТОЛЬКО их, не выдумывай!):\n{format_places_for_prompt(all_places)}"
+    elif scale == "trip" and city:
+        real_places_text = f"\n\nГород: {city}. Используй только реальные, известные места. Не выдумывай адреса."
+
     prompt = (
         f"Ты — автор захватывающих романтических квестов. Создай ПОЛНОЦЕННОЕ приключение для пары.\n\n"
         f"Данные пары:\n— Имя: {user[1]}\n— Партнёр: {user[2]}\n— Увлечения: {user[5]}\n— Любимый фильм: {user[6]}\n\n"
         f"Формат: {location_info}.\n"
         f"Бюджет: {budget}.\n\n"
+        f"{real_places_text}\n\n"
         f"СОЗДАЙ КВЕСТ по такой структуре:\n\n"
         f"🗺️ <b>Название приключения</b>\n"
         f"[Красивое, интригующее название]\n\n"
@@ -664,6 +727,7 @@ async def treasure_budget(callback: CallbackQuery, state: FSMContext):
         f"— Без markdown (никаких ###, **, *)\n"
         f"— Используй только HTML-теги <b> и <i> и эмодзи\n"
         f"— Пиши живо, атмосферно, как в хорошем квесте"
+        f"\nВАЖНО: Не выдумывай названия мест и адреса. Используй только реальные данные из списка выше или общеизвестные места."
     )
     
     try:
@@ -678,6 +742,14 @@ async def treasure_budget(callback: CallbackQuery, state: FSMContext):
         text = response.choices[0].message.content
         text = clean_markdown(text)
         
+        # Добавляем ссылку на карту, если есть город
+        map_link = ""
+        if scale == "city" and city:
+            encoded_city = urllib.parse.quote(city)
+            map_link = f"\n\n📍 <b>Открыть карту города:</b> https://www.google.com/maps/search/{encoded_city}"
+        
+        text = text + map_link
+
         # Разбиваем длинное сообщение на части (Telegram лимит 4096 символов)
         full_text = f"🗺️ <b>Ваше приключение готово!</b>\n━━━━━━━━━━━━━━━\n\n{text}"
         
