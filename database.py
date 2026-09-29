@@ -46,22 +46,38 @@ def init_db():
         created_at TEXT
     )
     ''')
+
+    # Миграция: добавляем новые поля, если их ещё нет
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN user_gender TEXT DEFAULT 'не указан'")
+    except sqlite3.OperationalError:
+        pass
     
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN partner_gender TEXT DEFAULT 'не указан'")
+    except sqlite3.OperationalError:
+        pass
+    
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN relationship_state TEXT DEFAULT 'отлично'")
+    except sqlite3.OperationalError:
+        pass
+        
     conn.commit()
     conn.close()
     print("База данных создана!")
 
 init_db()
 
-def add_user(user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language):
+def add_user(user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language, user_gender="не указан", partner_gender="не указан", relationship_state="отлично"):
     conn = sqlite3.connect('cupidon.db')
     cur = conn.cursor()
     now = datetime.now().strftime('%Y-%m-%d')
     sub_end = (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d')
     cur.execute('''
-    INSERT INTO users (user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language, subscription_end, registered_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language, sub_end, now))
+    INSERT INTO users (user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language, subscription_end, registered_at, user_gender, partner_gender, relationship_state)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, name, partner_name, meeting_date, meeting_place, hobbies, favorite_movie, love_language, sub_end, now, user_gender, partner_gender, relationship_state))
     cur.execute('INSERT INTO user_settings (user_id) VALUES (?)', (user_id,))
     conn.commit()
     conn.close()
@@ -217,3 +233,19 @@ def get_recent_feedback(user_id, limit=3):
     results = cur.fetchall()
     conn.close()
     return [r[0] for r in results]
+
+def update_relationship_state(user_id, state):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    cur.execute('UPDATE users SET relationship_state = ? WHERE user_id = ?', (state, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_relationship_state(user_id):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    cur.execute('SELECT relationship_state FROM users WHERE user_id = ?', (user_id,))
+    result = cur.fetchone()
+    conn.close()
+    return result[0] if result else 'отлично'

@@ -40,12 +40,15 @@ PRICE = 300
 
 class RegistrationForm(StatesGroup):
     name = State()
+    user_gender = State()
     partner_name = State()
+    partner_gender = State()
     meeting_date = State()
     meeting_place = State()
     hobbies = State()
     favorite_movie = State()
     love_language = State()
+    relationship_state = State()
 
 
 class TreasureForm(StatesGroup):
@@ -62,7 +65,8 @@ main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📝 Задание"), KeyboardButton(text="✅ Выполнено")],
         [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🗺️ Карта сокровищ")],
-        [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="💎 Подписка")],
+        [KeyboardButton(text="💭 Состояние"), KeyboardButton(text="⚙️ Настройки")],
+        [KeyboardButton(text="💎 Подписка")],
     ],
     resize_keyboard=True
 )
@@ -72,6 +76,23 @@ love_keyboard = ReplyKeyboardMarkup(
         [KeyboardButton(text="💬 Слова"), KeyboardButton(text="⏰ Время")],
         [KeyboardButton(text="🎁 Подарки"), KeyboardButton(text="🤝 Помощь")],
         [KeyboardButton(text="🤗 Прикосновения")]
+    ],
+    resize_keyboard=True
+)
+
+gender_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="👨 Мужчина"), KeyboardButton(text="👩 Женщина")]
+    ],
+    resize_keyboard=True
+)
+
+relationship_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="💚 Всё отлично")],
+        [KeyboardButton(text="💛 Небольшие трудности")],
+        [KeyboardButton(text="🧡 Отдалились")],
+        [KeyboardButton(text="❤️‍🩹 Кризис")],
     ],
     resize_keyboard=True
 )
@@ -127,73 +148,137 @@ def generate_task_from_ai(user_id, task_type="text", category=None):
     hobbies = user[5]
     movie = user[6]
     love_lang = user[7]
+    user_gender = user[10] if len(user) > 10 else "не указан"
+    partner_gender = user[11] if len(user) > 11 else "не указан"
+    relationship_state = user[12] if len(user) > 12 else "отлично"
     
     feedback_list = database.get_recent_feedback(user_id, limit=3)
     feedback_text = ""
     if feedback_list:
-        feedback_text = "\n\nВАЖНО! Пользователь ранее жаловался на такие вещи в заданиях (НЕ повторяй):\n"
+        feedback_text = "\n\nУЧТИ ЭТИ ПОЖЕЛАНИЯ ПОЛЬЗОВАТЕЛЯ (не повторяй прошлые ошибки):\n"
         for i, fb in enumerate(feedback_list, 1):
             feedback_text += f"{i}. {fb}\n"
     
+    # Пол и роли — явно и однозначно
+    if user_gender == "мужчина":
+        user_role = f"мужчина по имени {name}"
+        partner_role = f"его девушка/жена {partner}"
+    elif user_gender == "женщина":
+        user_role = f"женщина по имени {name}"
+        partner_role = f"её парень/муж {partner}"
+    else:
+        user_role = f"человек по имени {name}"
+        partner_role = f"партнёр {partner}"
+    
+    if partner_gender == "мужчина":
+        partner_desc = f"мужчина {partner}"
+    elif partner_gender == "женщина":
+        partner_desc = f"женщина {partner}"
+    else:
+        partner_desc = f"партнёр {partner}"
+    
+    # Тон в зависимости от состояния отношений
+    state_instructions = {
+        "отлично": (
+            "У пары всё хорошо. Задание должно добавить огня, свежести и глубины. "
+            "Не бойся смелых идей, лёгкой интриги, новых форматов. Тон — тёплый, живой, игривый."
+        ),
+        "небольшие трудности": (
+            "У пары небольшие трудности, но чувства живы. Задание должно вернуть тепло, "
+            "напомнить, почему они вместе. Тон — мягкий, поддерживающий, без давления. "
+            "Избегай серьёзных разговоров 'по душам' — только лёгкое возвращение тепла."
+        ),
+        "отдалились": (
+            "Пара эмоционально отдалилась. Задание должно мягко восстановить связь, "
+            "без обвинений и 'выяснений отношений'. Тон — аккуратный, ненавязчивый. "
+            "Маленькие шаги: совместное действие, общее дело, тихий момент вдвоём."
+        ),
+        "кризис": (
+            "У пары кризис. Задание — очень мягкое, без давления и романтики 'через силу'. "
+            "Тон — заботливый, спокойный. Подойдут простые человеческие жесты: "
+            "чашка чая, поддержка в мелочи, спокойное присутствие. Никаких сюрпризов и 'огня'."
+        ),
+    }
+    state_hint = state_instructions.get(relationship_state, state_instructions["отлично"])
+    
     if not category:
-        categories = ["разговор", "сюрприз", "воспоминание", "близость", "игра", "приключение", "творчество"]
         import random
+        categories = ["разговор", "сюрприз", "воспоминание", "близость", "игра", "приключение", "творчество", "забота"]
         category = random.choice(categories)
     
     category_instructions = {
-        "разговор": "Задание должно привести пару к тёплому, неожиданному разговору. Конкретный сценарий: вопрос из конверта, обмен мечтами, игра в 'правда или действие'.",
-        "сюрприз": "Задание про маленький неожиданный сюрприз. Конкретика: спрятанная записка, неожиданный звонок, маленький подарок без повода, завтрак в постель.",
-        "воспоминание": "Задание вернуть пару в тёплое прошлое. Конкретика: найти старое фото, воссоздать момент, написать письмо в прошлое.",
-        "близость": "Задание про близость, но ИНТЕРЕСНОЕ. Например: рассказать партнёру 3 вещи, которые обожаешь, глядя в глаза.",
-        "игра": "Задание игровое. Конкретика: настольная игра на ставки, челлендж, соревнование, квест с загадками.",
-        "приключение": "Задание про приключение внутри квартиры. Конкретика: секретная миссия, поиск сокровищ, исследование.",
-        "творчество": "Задание творческое. Конкретика: вместе приготовить новое блюдо, нарисовать друг друга, придумать песню.",
+        "разговор": "Задание про тёплый разговор. НЕ банальный вопрос 'как дела'. Конкретика: обмен мечтами на год, вопрос из прошлого, смешная история из детства.",
+        "сюрприз": "Задание про маленький сюрприз для партнёра. Конкретика: то, что партнёр любит (кофе, сладость, музыка, книга), неожиданно оказавшееся рядом.",
+        "воспоминание": "Задание вернуть тёплое воспоминание. Конкретика: старое фото, музыка из прошлого, воссоздание маленькой детали того дня.",
+        "близость": "Задание про эмоциональную или физическую близость. НЕ 'обнимитесь'. Конкретика: что-то неожиданное и настоящее — массаж, тихий вечер, письмо, совместная тишина.",
+        "игра": "Задание игровое. Конкретика: небольшое соревнование, челлендж, игра вдвоём, ставки на желание.",
+        "приключение": "Задание про маленькое приключение. Конкретика: выйти вместе куда-то, сделать что-то новое, мини-квест дома или по маршруту.",
+        "творчество": "Задание творческое. Конкретика: вместе приготовить новое блюдо, нарисовать что-то для партнёра, придумать совместный ритуал.",
+        "забота": "Задание про заботу. Конкретика: то, что партнёру действительно нужно и приятно (уставшему — отдых, голодному — еда, грустному — поддержка).",
     }
     
     if task_type == "photo":
         prompt = (
-            f"Придумай простое и интересное задание для пары на сегодня.\n\n"
-            f"Данные: имя {name}, партнёр {partner}, познакомились в {place}, увлечения: {hobbies}, любимый фильм: {movie}, язык любви: {love_lang}.\n\n"
-            f"Категория: воспоминание (со старой фотографией)."
-            f"{feedback_text}\n\n"
+            f"Ты — внимательный и тонкий автор романтических заданий для пар.\n\n"
+            f"КОМУ ПИШЕШЬ: {user_role}. {partner_role.capitalize()}.\n"
+            f"История пары: познакомились в {place}, общие увлечения — {hobbies}, любимый фильм — {movie}, "
+            f"язык любви у {name} — {love_lang}.\n"
+            f"Состояние отношений: {relationship_state}.\n"
+            f"{state_hint}\n"
+            f"{feedback_text}\n"
+            f"Категория: воспоминание со старой фотографией.\n\n"
             f"ФОРМАТ ОТВЕТА (строго):\n"
             f"🎯 Название задания\n\n"
             f"Шаг 1. [конкретное действие]\n"
             f"Шаг 2. [конкретное действие]\n"
             f"Шаг 3. [конкретное действие]\n\n"
             f"⏱ Время: [5-15] минут\n\n"
-            f"ТРЕБОВАНИЯ:\n"
-            f"— Максимум 3 шага, каждый простой\n"
-            f"— Без markdown (никаких **, ##, *)\n"
-            f"— Обращайся по имени {name}\n"
-            f"— Напиши только текст задания"
+            f"ЖЁСТКИЕ ПРАВИЛА:\n"
+            f"— Обращайся ТОЛЬКО к {name} ({user_gender}), НЕ путай роли!\n"
+            f"— Задание делает {name} для {partner_desc}.\n"
+            f"— БЕЗ театральщины ('представь, что ты...', 'разыграй сцену', 'сыграй роль').\n"
+            f"— БЕЗ детсадовщины ('нарисуй солнышко', 'сделай коллаж', 'сочини стишок').\n"
+            f"— БЕЗ банальностей ('обнимитесь', 'посмотрите в глаза', 'скажи что любишь').\n"
+            f"— Максимум 3 шага, каждый простой и выполнимый.\n"
+            f"— Без markdown (никаких **, ##, *).\n"
+            f"— Пиши живо, по-человечески, как будто шепчешь на ухо подруге/другу.\n"
+            f"— Напиши только текст задания."
         )
     else:
         prompt = (
-            f"Придумай простое и интересное задание для пары на сегодня.\n\n"
-            f"Данные: имя {name}, партнёр {partner}, познакомились в {place}, увлечения: {hobbies}, любимый фильм: {movie}.\n\n"
-            f"Категория: {category}.\n"
-            f"{category_instructions[category]}"
-            f"{feedback_text}\n\n"
+            f"Ты — внимательный и тонкий автор романтических заданий для пар.\n\n"
+            f"КОМУ ПИШЕШЬ: {user_role}. {partner_role.capitalize()}.\n"
+            f"История пары: познакомились в {place}, общие увлечения — {hobbies}, любимый фильм — {movie}.\n"
+            f"Состояние отношений: {relationship_state}.\n"
+            f"{state_hint}\n"
+            f"{feedback_text}\n"
+            f"Категория: {category}. {category_instructions[category]}\n\n"
             f"ФОРМАТ ОТВЕТА (строго):\n"
             f"🎯 Название задания\n\n"
             f"Шаг 1. [конкретное действие]\n"
             f"Шаг 2. [конкретное действие]\n"
             f"Шаг 3. [конкретное действие]\n\n"
             f"⏱ Время: [5-15] минут\n\n"
-            f"ТРЕБОВАНИЯ:\n"
-            f"— Максимум 3 шага, каждый простой и выполнимый за 2-3 минуты\n"
-            f"— НЕ используй сложные загадки и длинные цепочки\n"
-            f"— ЗАПРЕЩЕНО: банальности типа 'обнимитесь', 'посмотрите в глаза'\n"
-            f"— Обращайся по имени {name}\n"
-            f"— Без markdown (никаких **, ##, *)\n"
-            f"— Напиши только текст задания"
+            f"ЖЁСТКИЕ ПРАВИЛА:\n"
+            f"— Обращайся ТОЛЬКО к {name} ({user_gender}), НЕ путай роли!\n"
+            f"— Если {name} мужчина — пиши ему как мужчине, который делает что-то для своей {partner_desc}.\n"
+            f"— Если {name} женщина — пиши ей как женщине, которая делает что-то для своего {partner_desc}.\n"
+            f"— Задание делает {name} для партнёра, а не наоборот.\n"
+            f"— БЕЗ театральщины ('представь, что ты...', 'разыграй сцену', 'сыграй роль', 'будто вы в кино').\n"
+            f"— БЕЗ детсадовщины ('нарисуй солнышко', 'сделай коллаж', 'сочини стишок', 'придумай сказку').\n"
+            f"— БЕЗ банальностей ('обнимитесь покрепче', 'посмотрите в глаза', 'скажи три комплимента').\n"
+            f"— Конкретика, а не абстракция. Не 'сделай приятное', а 'приготовь его любимый кофе и оставь записку на чашке'.\n"
+            f"— Учитывай, что партнёру ({partner_desc}) реально будет приятно и интересно.\n"
+            f"— Максимум 3 шага, каждый простой и выполнимый за 2-3 минуты.\n"
+            f"— Без markdown (никаких **, ##, *).\n"
+            f"— Пиши живо, тепло, по-человечески.\n"
+            f"— Напиши только текст задания."
         )
     
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "Ты креативный автор романтических заданий. Пишешь живо, конкретно, без банальностей. Никогда не используешь markdown."},
+            {"role": "system", "content": "Ты тонкий автор романтических заданий. Пишешь живо, конкретно, без театральности и банальностей. Всегда учитываешь пол и роль. Никогда не используешь markdown."},
             {"role": "user", "content": prompt}
         ],
         temperature=1.0
@@ -250,16 +335,49 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.message(RegistrationForm.name)
 async def reg_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("💑 Как зовут твоего партнёра?")
+    await message.answer(
+        "Приятно познакомиться! 👋\n\n"
+        "Укажи свой пол, чтобы я мог давать правильные задания:",
+        reply_markup=gender_keyboard
+    )
+    await state.set_state(RegistrationForm.user_gender)
+
+
+@dp.message(RegistrationForm.user_gender)
+async def reg_user_gender(message: types.Message, state: FSMContext):
+    if message.text not in ["👨 Мужчина", "👩 Женщина"]:
+        await message.answer("Пожалуйста, выбери из кнопок ниже 👇", reply_markup=gender_keyboard)
+        return
+    gender = "мужчина" if "Мужчина" in message.text else "женщина"
+    await state.update_data(user_gender=gender)
+    await message.answer(
+        "Отлично! 💑\n\nКак зовут твоего партнёра?",
+        reply_markup=ReplyKeyboardRemove()
+    )
     await state.set_state(RegistrationForm.partner_name)
 
 
 @dp.message(RegistrationForm.partner_name)
-async def reg_partner(message: types.Message, state: FSMContext):
+async def reg_partner_name(message: types.Message, state: FSMContext):
     await state.update_data(partner_name=message.text)
+    await message.answer(
+        f"Какой пол у твоего партнёра?",
+        reply_markup=gender_keyboard
+    )
+    await state.set_state(RegistrationForm.partner_gender)
+
+
+@dp.message(RegistrationForm.partner_gender)
+async def reg_partner_gender(message: types.Message, state: FSMContext):
+    if message.text not in ["👨 Мужчина", "👩 Женщина"]:
+        await message.answer("Пожалуйста, выбери из кнопок ниже 👇", reply_markup=gender_keyboard)
+        return
+    gender = "мужчина" if "Мужчина" in message.text else "женщина"
+    await state.update_data(partner_gender=gender)
     await message.answer(
         "📅 Введите дату вашего знакомства в формате <b>ДД.ММ.ГГГГ</b>\n\n"
         "Например: <i>15.05.2020</i>",
+        reply_markup=ReplyKeyboardRemove(),
         parse_mode="HTML"
     )
     await state.set_state(RegistrationForm.meeting_date)
@@ -307,6 +425,30 @@ async def reg_movie(message: types.Message, state: FSMContext):
 @dp.message(RegistrationForm.love_language)
 async def reg_love(message: types.Message, state: FSMContext):
     await state.update_data(love_language=message.text)
+    await message.answer(
+        "Как сейчас обстоят дела в ваших отношениях? 💭\n\n"
+        "Это поможет мне подобрать правильный тон заданий:",
+        reply_markup=relationship_keyboard
+    )
+    await state.set_state(RegistrationForm.relationship_state)
+
+
+@dp.message(RegistrationForm.relationship_state)
+async def reg_relationship_state(message: types.Message, state: FSMContext):
+    allowed = ["💚 Всё отлично", "💛 Небольшие трудности", "🧡 Отдалились", "❤️‍🩹 Кризис"]
+    if message.text not in allowed:
+        await message.answer("Пожалуйста, выбери из кнопок ниже 👇", reply_markup=relationship_keyboard)
+        return
+    
+    state_map = {
+        "💚 Всё отлично": "отлично",
+        "💛 Небольшие трудности": "небольшие трудности",
+        "🧡 Отдалились": "отдалились",
+        "❤️‍🩹 Кризис": "кризис"
+    }
+    relationship_state = state_map[message.text]
+    await state.update_data(relationship_state=relationship_state)
+    
     data = await state.get_data()
     
     database.add_user(
@@ -317,7 +459,10 @@ async def reg_love(message: types.Message, state: FSMContext):
         meeting_place=data['meeting_place'],
         hobbies=data['hobbies'],
         favorite_movie=data['favorite_movie'],
-        love_language=data['love_language']
+        love_language=data['love_language'],
+        user_gender=data.get('user_gender', 'не указан'),
+        partner_gender=data.get('partner_gender', 'не указан'),
+        relationship_state=relationship_state
     )
     
     await message.answer(
@@ -649,6 +794,63 @@ async def cmd_settings(message: types.Message, state: FSMContext):
     )
 
 
+@dp.message(Command("state"))
+async def cmd_state(message: types.Message, state: FSMContext):
+    await state.clear()
+    user_id = message.from_user.id
+    user = database.get_user(user_id)
+    
+    if not user:
+        await message.answer("Сначала пройдите регистрацию — нажмите /start")
+        return
+    
+    current = database.get_relationship_state(user_id)
+    
+    await message.answer(
+        f"💭 <b>Как сейчас обстоят дела в ваших отношениях?</b>\n\n"
+        f"Текущий статус: <b>{current}</b>\n\n"
+        "Выберите актуальный — я подстрою тон заданий 👇",
+        reply_markup=relationship_keyboard,
+        parse_mode="HTML"
+    )
+
+@dp.message(F.text == "💭 Состояние")
+async def btn_state(message: types.Message, state: FSMContext):
+    await cmd_state(message, state)
+
+
+@dp.message(F.text.in_(["💚 Всё отлично", "💛 Небольшие трудности", "🧡 Отдалились", "❤️‍🩹 Кризис"]))
+async def change_relationship_state(message: types.Message):
+    # Проверяем, что пользователь уже зарегистрирован
+    user_id = message.from_user.id
+    user = database.get_user(user_id)
+    
+    if not user:
+        # Это регистрация — обрабатывается в reg_relationship_state
+        return
+    
+    state_map = {
+        "💚 Всё отлично": "отлично",
+        "💛 Небольшие трудности": "небольшие трудности",
+        "🧡 Отдалились": "отдалились",
+        "❤️‍🩹 Кризис": "кризис"
+    }
+    relationship_state = state_map[message.text]
+    database.update_relationship_state(user_id, relationship_state)
+    
+    response_map = {
+        "отлично": "🔥 Отлично! Буду давать смелые и тёплые задания — добавлю огня в ваши отношения.",
+        "небольшие трудности": "💛 Понял. Сделаю задания мягче — вернём тепло потихоньку, без давления.",
+        "отдалились": "🧡 Понял тебя. Буду аккуратным — маленькие шаги, чтобы снова почувствовать друг друга.",
+        "кризис": "❤️‍🩹 Понял. Задания будут очень мягкими, без романтики через силу. Просто забота и тепло."
+    }
+    
+    await message.answer(
+        f"{response_map[relationship_state]}\n\n"
+        "Главное меню 👇",
+        reply_markup=main_menu
+    )
+
 @dp.message(F.text.in_(["📅 Каждый день", "🗓 3 раза в неделю"]))
 async def set_frequency(message: types.Message):
     user_id = message.from_user.id
@@ -658,7 +860,6 @@ async def set_frequency(message: types.Message):
     else:
         database.update_setting(user_id, "3times_week")
         await message.answer("✅ <b>Готово!</b> Теперь задания будут приходить по понедельникам, средам и пятницам.", parse_mode="HTML", reply_markup=main_menu)
-
 
 @dp.message(F.text == "⬅️ Назад в меню")
 async def back_to_menu(message: types.Message):
