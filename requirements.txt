@@ -1,4 +1,6 @@
-aiogram
-openai
-apscheduler
+aiogram>=3.7
+openai>=1.40
+apscheduler>=3.10,<4
 python-dotenv
+aiohttp
+tzdata
