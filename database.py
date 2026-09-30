@@ -62,6 +62,15 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN relationship_state TEXT DEFAULT 'отлично'")
     except sqlite3.OperationalError:
         pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN last_checkin TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN current_mood TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
         
     conn.commit()
     conn.close()
@@ -241,7 +250,6 @@ def update_relationship_state(user_id, state):
     conn.commit()
     conn.close()
 
-
 def get_relationship_state(user_id):
     conn = sqlite3.connect('cupidon.db')
     cur = conn.cursor()
@@ -249,3 +257,35 @@ def get_relationship_state(user_id):
     result = cur.fetchone()
     conn.close()
     return result[0] if result else 'отлично'
+
+def update_checkin(user_id, mood):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    now = datetime.now().strftime('%Y-%m-%d')
+    cur.execute('UPDATE users SET last_checkin = ?, current_mood = ? WHERE user_id = ?', (now, mood, user_id))
+    conn.commit()
+    conn.close()
+
+
+def days_since_checkin(user_id):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    cur.execute('SELECT last_checkin FROM users WHERE user_id = ?', (user_id,))
+    result = cur.fetchone()
+    conn.close()
+    if not result or not result[0]:
+        return 999  # Очень давно (никогда)
+    try:
+        last = datetime.strptime(result[0], '%Y-%m-%d')
+        return (datetime.now() - last).days
+    except Exception:
+        return 999
+
+
+def get_current_mood(user_id):
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    cur.execute('SELECT current_mood FROM users WHERE user_id = ?', (user_id,))
+    result = cur.fetchone()
+    conn.close()
+    return result[0] if result and result[0] else ''

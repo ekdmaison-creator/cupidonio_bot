@@ -97,6 +97,13 @@ relationship_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+mood_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="😍 Всё прекрасно", callback_data="mood_great")],
+    [InlineKeyboardButton(text="🙂 Хорошо", callback_data="mood_good")],
+    [InlineKeyboardButton(text="😐 Есть трудности", callback_data="mood_hard")],
+    [InlineKeyboardButton(text="😔 Сложный период", callback_data="mood_crisis")],
+])
+
 settings_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📅 Каждый день")],
@@ -136,6 +143,137 @@ def clean_markdown(text: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
+def calculate_relationship_duration(meeting_date_str: str) -> dict:
+    """
+    Вычисляет длительность отношений из строки даты знакомства.
+    Возвращает словарь с полями: days, months, years, stage, description.
+    """
+    import re
+    try:
+        # Пробуем разные форматы даты
+        date_str = meeting_date_str.strip()
+        parsed_date = None
+        
+        # Формат ДД.ММ.ГГГГ
+        match = re.match(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', date_str)
+        if match:
+            day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            parsed_date = datetime(year, month, day)
+        else:
+            # Формат ДД/ММ/ГГГГ
+            match = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', date_str)
+            if match:
+                day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+                parsed_date = datetime(year, month, day)
+        
+        if not parsed_date:
+            return {
+                "days": 0, "months": 0, "years": 0,
+                "stage": "неизвестно",
+                "description": "длительность отношений не определена"
+            }
+        
+        delta = datetime.now() - parsed_date
+        days = delta.days
+        years = days // 365
+        months = (days % 365) // 30
+        
+        # Определяем стадию отношений
+        if days < 30:
+            stage = "совсем недавно вместе"
+            description = "Вы только начали свой путь вместе — это конфетно-букетный период. Задания должны быть лёгкими, игривыми, с ноткой новизны и волнения. Помогите им лучше узнать друг друга."
+        elif days < 180:
+            stage = "в начале пути"
+            description = "Вы вместе несколько месяцев — узнаёте друг друга по-настоящему. Задания могут быть чуть глубже, но всё ещё с лёгкостью и исследованием."
+        elif days < 365:
+            stage = "первый год вместе"
+            description = "Вы приближаетесь к первой серьёзной отметке — году вместе. Задания должны помогать закреплять привычку быть внимательными друг к другу."
+        elif years < 3:
+            stage = "пара со стажем 1-3 года"
+            description = "Вы вместе уже больше года — есть свои ритуалы и история. Задания могут быть более глубокими, с отсылками к общим воспоминаниям, с заботой о сохранении новизны."
+        elif years < 7:
+            stage = "пара со стажем 3-7 лет"
+            description = "Вы вместе несколько лет. В отношениях может появляться рутина. Задания должны добавлять свежесть, новые форматы, неожиданные повороты. Важно не скатываться в банальности."
+        elif years < 15:
+            stage = "пара со стажем 7-15 лет"
+            description = "Вы вместе долгие годы. У вас глубокие связи и общая история. Задания — про возвращение к истокам, про маленькие искры в привычной жизни, про благодарность друг другу."
+        else:
+            stage = "пара с многолетней историей"
+            description = "Вы вместе больше 15 лет. Ваша связь — это нечто особенное. Задания — про нежность, заботу, про то, чтобы заново открывать друг друга. Никаких банальностей, только искреннее и тёплое."
+        
+        return {
+            "days": days,
+            "months": months,
+            "years": years,
+            "stage": stage,
+            "description": description
+        }
+    except Exception as e:
+        print(f"Ошибка вычисления длительности: {e}")
+        return {
+            "days": 0, "months": 0, "years": 0,
+            "stage": "неизвестно",
+            "description": "длительность отношений не определена"
+        }
+
+def parse_hobbies(hobbies_str: str) -> list:
+    """
+    Разбирает строку увлечений на список.
+    Пример: 'путешествия, кино, кулинария' -> ['путешествия', 'кино', 'кулинария']
+    """
+    if not hobbies_str or hobbies_str.strip() == "":
+        return []
+    
+    # Разделяем по запятой, точке с запятой или слэшу
+    import re
+    parts = re.split(r'[,;/]', hobbies_str)
+    hobbies = [p.strip().lower() for p in parts if p.strip()]
+    
+    # Убираем дубликаты, сохраняя порядок
+    seen = set()
+    result = []
+    for h in hobbies:
+        if h not in seen and len(h) > 1:
+            seen.add(h)
+            result.append(h)
+    
+    return result
+
+
+def get_hobby_hint(hobbies: list, relationship_state: str) -> str:
+    """
+    Возвращает инструкцию для AI о том, как использовать увлечения пары.
+    """
+    if not hobbies:
+        return "\nУ пары не указаны конкретные увлечения — используй универсальные, но живые идеи.\n"
+    
+    hobbies_text = ", ".join(hobbies)
+    
+    hint = (
+        f"\nУВЛЕЧЕНИЯ ПАРЫ (используй ИХ в задании — это критически важно!):\n"
+        f"— {hobbies_text}\n\n"
+        f"Как использовать увлечения:\n"
+        f"— Если увлечение 'путешествия' — задание про планирование поездки, поиск новых мест, воспоминания о поездках, изучение стран.\n"
+        f"— Если 'кино' или 'сериалы' — задание про совместный просмотр, обсуждение, игру по фильму, цитату из любимого.\n"
+        f"— Если 'кулинария' — задание про совместное приготовление блюда, поиск нового рецепта, ужин с сюрпризом.\n"
+        f"— Если 'спорт' или 'фитнес' — задание про совместную тренировку, прогулку, челлендж на активность.\n"
+        f"— Если 'музыка' — задание про совместный плейлист, песню, концерт, танец под любимую мелодию.\n"
+        f"— Если 'книги' или 'чтение' — задание про обмен книгами, обсуждение прочитанного, чтение вслух друг другу.\n"
+        f"— Если 'игры' — задание про совместную игру, настолку, видеоигру, челлендж.\n"
+        f"— Если 'творчество' — задание про совместное творчество, рисунок, поделку, идею.\n"
+        f"— Если 'прогулки' или 'природа' — задание про совместную прогулку, пикник, наблюдение за закатом.\n"
+        f"— Если увлечение не из списка — придумай, как связать задание с ним естественно и живо.\n"
+    )
+    
+    # Дополнительная корректировка в зависимости от состояния отношений
+    if relationship_state in ["отдалились", "кризис"]:
+        hint += (
+            f"\n⚠️ ВАЖНО: у пары сейчас непростое время. Задание через увлечения должно быть "
+            f"МЯГКИМ и НЕОБЯЗЫВАЮЩИМ — просто совместное действие, а не 'романтический вечер'. "
+            f"Никакого давления.\n"
+        )
+    
+    return hint
 
 def generate_task_from_ai(user_id, task_type="text", category=None):
     user = database.get_user(user_id)
@@ -151,7 +289,21 @@ def generate_task_from_ai(user_id, task_type="text", category=None):
     user_gender = user[10] if len(user) > 10 else "не указан"
     partner_gender = user[11] if len(user) > 11 else "не указан"
     relationship_state = user[12] if len(user) > 12 else "отлично"
-    
+
+    # Вычисляем длительность отношений
+    meeting_date = user[3] if len(user) > 3 else ""
+    duration_info = calculate_relationship_duration(meeting_date)
+    duration_text = (
+        f"\nДЛИТЕЛЬНОСТЬ ОТНОШЕНИЙ:\n"
+        f"— Вместе: {duration_info['years']} г. {duration_info['months']} мес. ({duration_info['days']} дней)\n"
+        f"— Стадия: {duration_info['stage']}\n"
+        f"— Рекомендация по тону: {duration_info['description']}\n"
+    )
+
+    # Разбираем увлечения и формируем инструкцию
+    hobbies_list = parse_hobbies(hobbies)
+    hobby_hint = get_hobby_hint(hobbies_list, relationship_state)
+
     feedback_list = database.get_recent_feedback(user_id, limit=3)
     feedback_text = ""
     if feedback_list:
@@ -224,6 +376,8 @@ def generate_task_from_ai(user_id, task_type="text", category=None):
             f"История пары: познакомились в {place}, общие увлечения — {hobbies}, любимый фильм — {movie}, "
             f"язык любви у {name} — {love_lang}.\n"
             f"Состояние отношений: {relationship_state}.\n"
+            f"{duration_text}\n"
+            f"{hobby_hint}\n"
             f"{state_hint}\n"
             f"{feedback_text}\n"
             f"Категория: воспоминание со старой фотографией.\n\n"
@@ -250,6 +404,8 @@ def generate_task_from_ai(user_id, task_type="text", category=None):
             f"КОМУ ПИШЕШЬ: {user_role}. {partner_role.capitalize()}.\n"
             f"История пары: познакомились в {place}, общие увлечения — {hobbies}, любимый фильм — {movie}.\n"
             f"Состояние отношений: {relationship_state}.\n"
+            f"{duration_text}\n"
+            f"{hobby_hint}\n"
             f"{state_hint}\n"
             f"{feedback_text}\n"
             f"Категория: {category}. {category_instructions[category]}\n\n"
@@ -626,6 +782,30 @@ async def process_feedback(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
+@dp.callback_query(F.data.startswith("mood_"))
+async def process_mood(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    
+    mood_map = {
+        "mood_great": ("great", "😍", "отлично", "🔥 Прекрасно! Буду давать смелые, тёплые, живые задания."),
+        "mood_good": ("good", "🙂", "отлично", "✨ Отлично! Сохраняю тёплый тон и добавлю немного огня."),
+        "mood_hard": ("hard", "😐", "небольшие трудности", "💛 Понял. Сделаю задания мягче — без давления, только тепло."),
+        "mood_crisis": ("crisis", "😔", "кризис", "❤️‍🩹 Слышу тебя. Задания будут очень аккуратными — про заботу и присутствие."),
+    }
+    
+    mood_key, emoji, new_state, response_text = mood_map[callback.data]
+    
+    # Сохраняем check-in и обновляем состояние отношений
+    database.update_checkin(user_id, mood_key)
+    database.update_relationship_state(user_id, new_state)
+    
+    await callback.message.edit_text(
+        f"{emoji} <b>Спасибо, что поделился.</b>\n\n"
+        f"{response_text}\n\n"
+        "Я всегда рядом — просто напиши /task, когда будешь готов 💕",
+        parse_mode="HTML"
+    )
 
 # --- Выполнено (кнопка внизу) ---
 
@@ -917,6 +1097,35 @@ async def cmd_confirm(message: types.Message, state: FSMContext):
 
 # ============ ПЛАНИРОВЩИК ============
 
+async def send_checkin_reminders():
+    """Раз в 3 дня мягко спрашивает, как у пары дела."""
+    conn = sqlite3.connect('cupidon.db')
+    cur = conn.cursor()
+    today = datetime.now().strftime('%Y-%m-%d')
+    cur.execute('SELECT user_id FROM users WHERE subscription_end >= ?', (today,))
+    users = cur.fetchall()
+    conn.close()
+    
+    for (user_id,) in users:
+        # Проверяем, сколько дней прошло с последнего check-in
+        days = database.days_since_checkin(user_id)
+        if days < 3:
+            continue
+        
+        try:
+            await bot.send_message(
+                user_id,
+                "💭 <b>Как у вас сейчас?</b>\n\n"
+                "Иногда полезно остановиться и честно спросить себя:\n"
+                "как наши отношения? Что чувствуем друг к другу?\n\n"
+                "Ответь одним нажатием — я подстрою тон заданий 👇",
+                reply_markup=mood_keyboard,
+                parse_mode="HTML"
+            )
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            print(f"Ошибка check-in {user_id}: {e}")
+
 async def send_daily_tasks():
     conn = sqlite3.connect('cupidon.db')
     cur = conn.cursor()
@@ -985,7 +1194,7 @@ async def send_evening_reminder():
 
 
 scheduler.add_job(send_evening_reminder, "cron", hour=19, minute=0)
-
+scheduler.add_job(send_checkin_reminders, "cron", hour=11, minute=0)
 
 # ============ ВЕБ-СЕРВЕР ============
 
